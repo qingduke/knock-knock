@@ -19,12 +19,34 @@ import random
 import sqlite3
 import time
 
-# ---- 按本机环境修改以下常量 ----
-STATE = "/path/to/knock_state.json"          # 敲门计划状态文件
-DB = "/path/to/hermes/state.db"              # Hermes 会话数据库
-GATEWAY_STATE = "/path/to/hermes/gateway_state.json"  # 网关状态（active_agents）
-USER_OPENID = "YOUR_USER_OPENID"             # 被敲门用户的 openid
-CHAT_WINDOW = 600                            # 秒：最近 10 分钟有活动视为聊天中
+# 零配置：profile 根目录 = 本脚本所在 scripts/ 的上一级；
+# 用户 openid 从 profile 根目录 .env 读取（QQ_USER_OPENID=...）
+PROF = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATE = os.path.join(PROF, "knock_state.json")
+DB = os.path.join(PROF, "state.db")
+GATEWAY_STATE = os.path.join(PROF, "gateway_state.json")
+CHAT_WINDOW = 600  # 秒：最近 10 分钟有活动视为聊天中
+
+
+def _load_env():
+    """从 profile 根目录 .env 读取键值（不覆盖已存在的环境变量）。"""
+    env_path = os.path.join(PROF, ".env")
+    if not os.path.exists(env_path):
+        return
+    try:
+        for line in open(env_path, encoding="utf-8"):
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            os.environ.setdefault(k.strip(), v.strip())
+    except Exception:
+        pass
+
+
+def _user():
+    _load_env()
+    return os.environ.get("QQ_USER_OPENID", "")
 
 
 def is_chatting(now_ts: float) -> bool:
@@ -40,7 +62,7 @@ def is_chatting(now_ts: float) -> bool:
         db = sqlite3.connect(DB, timeout=3)
         row = db.execute(
             "SELECT MAX(last_activity_at) FROM sessions WHERE source='qqbot' AND user_id=?",
-            (USER_OPENID,),
+            (_user(),),
         ).fetchone()
         db.close()
         if row and row[0] is not None and now_ts - row[0] < CHAT_WINDOW:

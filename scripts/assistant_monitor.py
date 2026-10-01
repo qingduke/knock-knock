@@ -22,18 +22,39 @@ import random
 import sqlite3
 import time
 
-# ---- 按本机环境修改以下常量 ----
-PROF = "/path/to/hermes/profile"             # Hermes profile 目录
-KNOCK_STATE = PROF + "/knock_state.json"     # 敲门计划状态
-BOOT_STATE = PROF + "/boot_greet_state.json"  # 开机问候状态（date=上次问候日期）
-SCREEN_STATE = PROF + "/screen_state.json"   # 屏幕对比基线（KNOCK 时写入）
-DB = PROF + "/state.db"                      # 会话数据库
-GATEWAY_STATE = PROF + "/gateway_state.json"  # 网关状态（active_agents）
-USER = "YOUR_USER_OPENID"                    # 用户 openid
-CHAT_WINDOW = 600                            # 秒：最近 10 分钟有活动视为聊天中
-BOOT_WINDOW = 1800                           # 秒：开机 30 分钟内
+# 零配置：profile 根目录 = 本脚本所在 scripts/ 的上一级；
+# 用户 openid 从 profile 根目录 .env 读取（QQ_USER_OPENID=...）
+PROF = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+KNOCK_STATE = os.path.join(PROF, "knock_state.json")
+BOOT_STATE = os.path.join(PROF, "boot_greet_state.json")
+SCREEN_STATE = os.path.join(PROF, "screen_state.json")
+DB = os.path.join(PROF, "state.db")
+GATEWAY_STATE = os.path.join(PROF, "gateway_state.json")
+CHAT_WINDOW = 600   # 秒：最近 10 分钟有活动视为聊天中
+BOOT_WINDOW = 1800  # 秒：开机 30 分钟内
 
 kernel32 = ctypes.windll.kernel32
+
+
+def _load_env():
+    """从 profile 根目录 .env 读取键值（不覆盖已存在的环境变量）。"""
+    env_path = os.path.join(PROF, ".env")
+    if not os.path.exists(env_path):
+        return
+    try:
+        for line in open(env_path, encoding="utf-8"):
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            os.environ.setdefault(k.strip(), v.strip())
+    except Exception:
+        pass
+
+
+def _user():
+    _load_env()
+    return os.environ.get("QQ_USER_OPENID", "")
 
 
 def uptime_seconds():
@@ -56,7 +77,7 @@ def is_chatting(now_ts: float) -> bool:
         db = sqlite3.connect(DB, timeout=3)
         row = db.execute(
             "SELECT MAX(last_activity_at) FROM sessions WHERE source='qqbot' AND user_id=?",
-            (USER,),
+            (_user(),),
         ).fetchone()
         db.close()
         if row and row[0] is not None and now_ts - row[0] < CHAT_WINDOW:

@@ -46,7 +46,8 @@ cron「玛修助手」(every 10m)
 2. 填写 `.env`（参考 `.env.example`）：
    `QQ_APP_ID` / `QQ_CLIENT_SECRET` / `QQ_USER_OPENID`
 3. **用户在 QQ 客户端对机器人开启「允许主动发送」**（必需，否则推送被拒）
-4. 修改各脚本顶部的路径/常量指向本机 Hermes profile 目录
+4. 把脚本放进 Hermes profile 的 `scripts/` 目录——路径自动推导，**零代码配置**；
+   在 profile 的 `.env` 中配置 `QQ_USER_OPENID=你的用户openid`
 5. 创建 cron 任务（agent 模式，monitor 指向 assistant_monitor.py，
    schedule `every 10m`），prompt 里写明 BOOT / KNOCK / WAIT 三种分支的行为
 6. 准备 `schedule.json`（日程簿）与 `activity_state.json`（活动状态簿），
