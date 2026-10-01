@@ -57,11 +57,28 @@ def _user():
     return os.environ.get("QQ_USER_OPENID", "")
 
 
-def uptime_seconds():
+def _gateway_uptime():
+    """gateway 主进程已运行秒数 ≈ 本次开机的时长。
+
+    不能用系统 GetTickCount 判断开机：Windows「快速启动」的混合关机/恢复
+    不会重置内核计时，用户每天关机开机却显示几十天 uptime。
+    gateway 由开机自启的计划任务拉起，每次开机都是新进程；gateway_state.json
+    里记录了 gateway 的 pid，用该进程的创建时间作为「本次开机」的时间点。
+    """
     try:
-        return kernel32.GetTickCount64() / 1000.0
+        gs = json.load(open(GATEWAY_STATE, encoding="utf-8"))
+        pid = gs.get("pid")
+        if not pid:
+            return 1e9
+        import psutil
+
+        try:
+            return max(0.0, time.time() - psutil.Process(pid).create_time())
+        except Exception:
+            return 1e9
     except Exception:
-        return 1e9  # 拿不到就保持安静
+        pass
+    return 1e9  # 拿不到就保持安静
 
 
 def is_chatting(now_ts: float) -> bool:
@@ -88,7 +105,7 @@ def is_chatting(now_ts: float) -> bool:
 
 
 def boot_check():
-    if uptime_seconds() > BOOT_WINDOW:
+    if _gateway_uptime() > BOOT_WINDOW:
         return None
     today = time.strftime("%Y-%m-%d")
     try:

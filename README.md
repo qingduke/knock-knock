@@ -72,6 +72,10 @@ cron「玛修助手」(every 10m)
 8. **前台账面获取在后台进程可能为空**：monitor/agent 运行在后台进程时
    `GetForegroundWindow` 可能拿不到标题，此时以键鼠空闲时长为准
 9. **频控**：未认证机器人 5/qps & 30/qpm（bot 维度），每用户每日 1000 条
+10. **「快速启动」让开机检测失灵**：Windows 快速启动的关机是混合关机，
+    GetTickCount / LastBootUpTime 不会随每天的开机重置（用户天天关机，
+    uptime 却显示几十天）。判断「刚开机」要用 gateway 进程的创建时间——
+    gateway 每次开机都由计划任务重新拉起，进程创建时间≈本次开机时间
 
 ## License
 
