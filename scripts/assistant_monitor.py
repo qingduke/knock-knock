@@ -123,26 +123,32 @@ def boot_check():
 
 
 def knock_check(now_ts: float):
+    lt = time.localtime()
     hour = time.strftime("%Y-%m-%dT%H")
-    idx = int(time.strftime("%M")) // 10
+    minute = lt.tm_min
     try:
         st = json.load(open(KNOCK_STATE, encoding="utf-8"))
     except Exception:
         st = {}
     if st.get("hour") != hour:
+        # 新的一小时：抽两次签——先抽次数（1~3），再抽具体分钟（2~59，互不重复）
         n = random.randint(1, 3)
-        st = {"hour": hour, "planned": sorted(random.sample(range(6), n)), "done": []}
+        st = {"hour": hour, "planned": sorted(random.sample(range(2, 60), n)), "done": []}
+        try:
+            json.dump(st, open(KNOCK_STATE, "w", encoding="utf-8"))
+        except Exception:
+            pass
     planned = st.get("planned", [])
     done = st.get("done", [])
-    if idx in planned and idx not in done:
-        done.append(idx)  # 跳过也照计次数
+    if minute in planned and minute not in done:
+        done.append(minute)  # 到点即消耗（聊天中跳过也不补敲）
         st["done"] = done
         try:
             json.dump(st, open(KNOCK_STATE, "w", encoding="utf-8"))
         except Exception:
             pass
         if is_chatting(now_ts):
-            return None  # 聊天中 -> 跳过但已计数
+            return None  # 聊天中 -> 跳过
         return "KNOCK"
     return None
 
