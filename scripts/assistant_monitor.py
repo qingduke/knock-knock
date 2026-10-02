@@ -131,9 +131,29 @@ def knock_check(now_ts: float):
     except Exception:
         st = {}
     if st.get("hour") != hour:
-        # 新的一小时：抽两次签——先抽次数（1~3），再抽具体分钟（2~59，互不重复）
+        # 新的一小时：抽两次签——先抽次数（1~3），再抽具体分钟。
+        # 约束：同小时内两两间隔 >=10 分钟；且与上一小时最后一次计划
+        # 至少间隔 10 分钟（跨小时边界也生效）。
         n = random.randint(1, 3)
-        st = {"hour": hour, "planned": sorted(random.sample(range(2, 60), n)), "done": []}
+        lo = 2
+        prev_last = st.get("last_planned")
+        if prev_last is not None:
+            lo = max(2, (prev_last + 10) % 60)
+        pool = list(range(lo, 60))
+        chosen = []
+        for _ in range(n):
+            if not pool:
+                break
+            x = random.choice(pool)
+            chosen.append(x)
+            pool = [m for m in pool if abs(m - x) >= 10]
+        planned = sorted(chosen)
+        st = {
+            "hour": hour,
+            "planned": planned,
+            "done": [],
+            "last_planned": planned[-1] if planned else prev_last,
+        }
         try:
             json.dump(st, open(KNOCK_STATE, "w", encoding="utf-8"))
         except Exception:
