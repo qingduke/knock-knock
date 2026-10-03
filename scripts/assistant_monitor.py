@@ -28,12 +28,17 @@ PROF = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KNOCK_STATE = os.path.join(PROF, "knock_state.json")
 BOOT_STATE = os.path.join(PROF, "boot_greet_state.json")
 SCREEN_STATE = os.path.join(PROF, "screen_state.json")
+IDLE_STATE = os.path.join(PROF, "idle_state.json")
+EVENTS = os.path.join(PROF, "events.json")
 DB = os.path.join(PROF, "state.db")
 GATEWAY_STATE = os.path.join(PROF, "gateway_state.json")
 CHAT_WINDOW = 600   # 秒：最近 10 分钟有活动视为聊天中
 BOOT_WINDOW = 1800  # 秒：开机 30 分钟内
+LEAVE_IDLE_S = 600  # 秒：键鼠无操作 10 分钟 -> 进入「无操作」状态
+RETURN_IDLE_S = 60  # 秒：idle 回落到 1 分钟内 -> 恢复操作
 
 kernel32 = ctypes.windll.kernel32
+user32 = ctypes.windll.user32
 
 
 def _load_env():
@@ -55,6 +60,85 @@ def _load_env():
 def _user():
     _load_env()
     return os.environ.get("QQ_USER_OPENID", "")
+
+
+def idle_seconds():
+    class LASTINPUTINFO(ctypes.Structure):
+        _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+    lii = LASTINPUTINFO()
+    lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
+    if user32.GetLastInputInfo(ctypes.byref(lii)):
+        return (kernel32.GetTickCount() - lii.dwTime) / 1000.0
+    return -1.0
+
+
+def foreground_title():
+    try:
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        n = user32.GetWindowTextLengthW(hwnd)
+        buf = ctypes.create_unicode_buffer(n + 1)
+        user32.GetWindowTextW(hwnd, buf, n + 1)
+        return buf.value
+    except Exception:
+        return ""
+
+
+def _append_event(kind, idle, fg):
+    try:
+        ev = json.load(open(EVENTS, encoding="utf-8"))
+    except Exception:
+        ev = []
+    ev.append(
+        {
+            "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "kind": kind,
+            "idle_s": round(idle, 1),
+            "foreground": fg,
+        }
+    )
+    try:
+        json.dump(ev[-10:], open(EVENTS, "w", encoding="utf-8"), ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def idle_event_check():
+    """屏幕观察事件检测（纯规则，零 AI）。
+
+    键鼠无操作超阈值 -> 持续输出 LEAVE（可能离开，也可能在用手机）；
+    idle 回落 -> 输出一次 RETURN。事件写入 events.json 供 agent 语义化。
+    输出稳定：离开期间一直 LEAVE，不会重复唤醒 agent。
+    """
+    try:
+        st = json.load(open(IDLE_STATE, encoding="utf-8"))
+    except Exception:
+        st = {"state": "in"}
+    idle = idle_seconds()
+    if idle < 0:
+        return None  # 拿不到数据就保持安静
+    state = st.get("state", "in")
+    if state == "in" and idle > LEAVE_IDLE_S:
+        st = {"state": "out", "since": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        try:
+            json.dump(st, open(IDLE_STATE, "w", encoding="utf-8"))
+        except Exception:
+            pass
+        _append_event("leave", idle, foreground_title())
+        return "LEAVE"
+    if state == "out" and idle < RETURN_IDLE_S:
+        st = {"state": "in"}
+        try:
+            json.dump(st, open(IDLE_STATE, "w", encoding="utf-8"))
+        except Exception:
+            pass
+        _append_event("return", idle, foreground_title())
+        return "RETURN"
+    if state == "out":
+        return "LEAVE"  # 持续无操作：输出保持不变
+    return None
 
 
 def _gateway_uptime():
@@ -174,7 +258,7 @@ def knock_check(now_ts: float):
 
 
 def main() -> None:
-    sig = boot_check() or knock_check(time.time()) or "WAIT"
+    sig = boot_check() or idle_event_check() or knock_check(time.time()) or "WAIT"
     print(sig)
 
 
