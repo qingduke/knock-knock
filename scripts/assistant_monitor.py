@@ -137,7 +137,7 @@ def idle_event_check():
         _append_event("return", idle, foreground_title())
         return "RETURN"
     if state == "out":
-        return "LEAVE"  # 持续无操作：输出保持不变
+        return None  # 持续无操作：转换时已发过 LEAVE 信号，此后让位，不再阻塞 KNOCK
     return None
 
 
